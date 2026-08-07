@@ -73,10 +73,24 @@ export class RedpickAudio {
     if (points >= 10) {
       this.tone(780, 0.1, "sine", 0.07, 0.1);
     }
+    if (points >= 25) {
+      this.tone(990, 0.12, "triangle", 0.08, 0.18);
+    }
+  }
+
+  bonus() {
+    this.tone(660, 0.06, "square", 0.08);
+    this.tone(880, 0.1, "triangle", 0.07, 0.06);
+  }
+
+  sweep() {
+    for (let i = 0; i < 6; i++) {
+      this.tone(400 * Math.pow(1.18, i), 0.08, "square", 0.09, i * 0.05);
+    }
   }
 
   win() {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       this.tone(440 * Math.pow(1.2, i), 0.1, "square", 0.09, i * 0.07);
     }
   }

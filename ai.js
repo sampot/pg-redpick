@@ -1,8 +1,8 @@
 /**
- * Prefer capturing red points; else dump black; else lowest table clutter.
+ * Prefer high-value captures (sweep / multi-red / streak); else dump carefully.
  */
 
-import { cardPoints, isRed } from "./game.js";
+import { cardPoints, isRed, previewCapture } from "./game.js";
 
 /**
  * @param {import('./game.js').RedpickGame} game
@@ -15,14 +15,17 @@ export function chooseAiCard(game, seat) {
 
   /** @type {{ id: number, score: number }[]} */
   const ranked = hand.map((c) => {
-    const matches = game.table.filter((t) => t.rank === c.rank);
+    const prev = previewCapture(game, seat, c.id);
     let score = -100;
-    if (matches.length) {
-      const gained = cardPoints(c) + matches.reduce((s, t) => s + cardPoints(t), 0);
-      score = 1000 + gained * 10 + matches.length;
+    if (prev?.capture) {
+      score = 2000 + prev.total * 12 + (prev.swept ? 80 : 0) + prev.streak * 15;
     } else {
-      // No capture: prefer placing black / low red so opponent can't easily take
-      score = isRed(c) ? -cardPoints(c) : 50 - c.rank;
+      // Avoid seeding rich red for opponents; prefer black / low
+      const danger = game.hands.some(
+        (h, i) => i !== seat && h.some((hc) => hc.rank === c.rank),
+      );
+      score = isRed(c) ? -cardPoints(c) * 3 : 40 - c.rank;
+      if (danger && isRed(c)) score -= 25;
     }
     return { id: c.id, score };
   });
