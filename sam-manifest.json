@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "rev": "04fd4a2",
+  "files": [
+    "ai.js",
+    "app.js",
+    "audio.js",
+    "functions.js",
+    "game.js",
+    "index.html",
+    "styles.css"
+  ]
+}
