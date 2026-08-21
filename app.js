@@ -705,7 +705,14 @@ async function syncSeatedPresence() {
     const data = await hostDomain("/api/session/presence", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ seatedRoles }),
+      body: JSON.stringify({
+        seatedRoles,
+        seats: seats.map((s) => ({
+          role: s.role,
+          name: s.name || s.displayName || undefined,
+          displayName: s.displayName || s.name || undefined,
+        })),
+      }),
     });
     if (data.state) applyOnlineState(data.state);
     if (data.events) for (const ev of data.events) applyEvent(ev);

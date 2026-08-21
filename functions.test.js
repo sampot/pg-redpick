@@ -118,6 +118,60 @@ describe("functions.js presence (4 seats)", () => {
     expect(data.state.seatedCount).toBe(4);
   });
 
+  it("carries booth display names into match state from presence seats", async () => {
+    await seedOpen(KV);
+    const res = await handler.fetch(
+      jsonRequest("/api/session/presence", {
+        method: "POST",
+        body: {
+          seatedRoles: ["host", "p2", "p3", "p4"],
+          seats: [
+            { role: "host", displayName: "山姆鍋（Sam)" },
+            { role: "p2", displayName: "G1" },
+            { role: "p3", name: "G2" },
+            { role: "p4", displayName: "G3" },
+          ],
+        },
+      }),
+      { KV },
+    );
+    const data = await res.json();
+    expect(data.state.status).toBe("ready");
+    expect(data.state.names).toEqual(["山姆鍋（Sam)", "G1", "G2", "G3"]);
+
+    const deal = await handler.fetch(
+      jsonRequest("/api/session/act", {
+        method: "POST",
+        body: { role: "host", payload: { type: "deal" } },
+      }),
+      { KV },
+    );
+    const dealt = await deal.json();
+    expect(dealt.state.names).toEqual(["山姆鍋（Sam)", "G1", "G2", "G3"]);
+  });
+
+  it("derives seated roles from seats when seatedRoles is omitted", async () => {
+    await seedOpen(KV);
+    const res = await handler.fetch(
+      jsonRequest("/api/session/presence", {
+        method: "POST",
+        body: {
+          playerSeated: true,
+          seats: [
+            { role: "host", displayName: "Host" },
+            { role: "p2", displayName: "G1" },
+            { role: "p3", displayName: "G2" },
+            { role: "p4", displayName: "G3" },
+          ],
+        },
+      }),
+      { KV },
+    );
+    const data = await res.json();
+    expect(data.state.status).toBe("ready");
+    expect(data.state.names).toEqual(["Host", "G1", "G2", "G3"]);
+  });
+
   it("closes the session when a seat leaves mid-game", async () => {
     await seedOpen(KV, {
       status: "active",

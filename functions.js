@@ -36,6 +36,7 @@ import {
  *   winner: number | null;
  *   message: string;
  *   lastAct: unknown;
+ *   names: string[];
  * }} RedpickStore
  */
 
@@ -62,6 +63,7 @@ function emptyStore() {
     winner: null,
     message: "",
     lastAct: null,
+    names: [...REDPICK_SEAT_NAMES],
   };
 }
 
@@ -97,6 +99,52 @@ function parseSeatedRoles(raw) {
     if (REDPICK_ROLES.includes(r)) out[r] = true;
   }
   return out;
+}
+
+/**
+ * Derive seated map from presence body.
+ * Prefer `seatedRoles`; else roles on `seats` (+ host when playerSeated).
+ * @param {Record<string, unknown>} body
+ * @returns {SeatedMap}
+ */
+function parseSeatedFromBody(body) {
+  if (Array.isArray(body.seatedRoles) && body.seatedRoles.length > 0) {
+    return parseSeatedRoles(body.seatedRoles);
+  }
+  if (Array.isArray(body.seats) && body.seats.length > 0) {
+    const roles = body.seats.map((s) =>
+      s && typeof s === "object" ? String(s.role || "").trim() : "",
+    );
+    const out = parseSeatedRoles(roles);
+    if (body.playerSeated && !out.host) out.host = true;
+    return out;
+  }
+  if (body.playerSeated) {
+    return { ...emptySeated(), host: true };
+  }
+  return emptySeated();
+}
+
+/**
+ * Overlay display names from seat rows onto the 4-seat name vector.
+ * @param {string[]} current
+ * @param {unknown} seats
+ * @returns {string[]}
+ */
+function namesFromSeats(current, seats) {
+  const names =
+    Array.isArray(current) && current.length === 4
+      ? current.map((n) => String(n || ""))
+      : [...REDPICK_SEAT_NAMES];
+  if (!Array.isArray(seats)) return names;
+  for (const raw of seats) {
+    if (!raw || typeof raw !== "object") continue;
+    const role = String(raw.role || "").trim();
+    const name = String(raw.displayName || raw.name || "").trim();
+    const idx = REDPICK_ROLES.indexOf(role);
+    if (idx >= 0 && name) names[idx] = name;
+  }
+  return names;
 }
 
 async function loadStore(env) {
@@ -145,6 +193,15 @@ async function loadStore(env) {
           : null,
       message: String(parsed.message || ""),
       lastAct: parsed.lastAct ?? null,
+      names: (() => {
+        const base = [...REDPICK_SEAT_NAMES];
+        if (!Array.isArray(parsed.names)) return base;
+        for (let i = 0; i < 4; i++) {
+          const n = String(parsed.names[i] || "").trim();
+          if (n) base[i] = n;
+        }
+        return base;
+      })(),
     };
   } catch {
     return emptyStore();
@@ -203,7 +260,9 @@ function viewForRole(store, viewerRole) {
     winner: store.winner,
     message: store.message,
     lastAct: store.lastAct,
-    names: [...REDPICK_SEAT_NAMES],
+    names: Array.isArray(store.names) && store.names.length === 4
+      ? store.names.slice()
+      : [...REDPICK_SEAT_NAMES],
     roles: [...REDPICK_ROLES],
   };
 
@@ -240,7 +299,10 @@ function liveScoresFromStore(store) {
 /** @param {RedpickStore} store */
 function gameFromStore(store) {
   const game = new RedpickGame();
-  game.names = [...REDPICK_SEAT_NAMES];
+  game.names =
+    Array.isArray(store.names) && store.names.length === 4
+      ? store.names.slice()
+      : [...REDPICK_SEAT_NAMES];
   game.hands = store.hands.map(cloneCards);
   game.piles = store.piles.map(cloneCards);
   game.bonuses = store.bonuses.slice();
@@ -512,9 +574,10 @@ export default {
         return err("session_inactive", "通道尚未開啟", 409);
       }
       const body = (await request.json().catch(() => null)) || {};
-      const nextSeated = parseSeatedRoles(body.seatedRoles);
+      const nextSeated = parseSeatedFromBody(body);
       const nextCount = seatedCount(nextSeated);
       const wasFull = allSeated(store.seated);
+      store.names = namesFromSeats(store.names, body.seats);
 
       if (
         !allSeated(nextSeated) &&
@@ -623,7 +686,10 @@ export default {
           return err("act_rejected", "尚未滿席，無法發牌");
         }
         const game = new RedpickGame();
-        game.names = [...REDPICK_SEAT_NAMES];
+        game.names =
+          Array.isArray(store.names) && store.names.length === 4
+            ? store.names.slice()
+            : [...REDPICK_SEAT_NAMES];
         game.deal();
         applyGameToStore(store, game);
         store.status = "active";
