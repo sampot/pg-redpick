@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { deriveChromeState } from "./ui-state.js";
+import {
+  deriveChromeState,
+  shouldShowSoloControls,
+} from "./ui-state.js";
+
+describe("shouldShowSoloControls", () => {
+  it("hides solo deal／reset on room surface even before online seat", () => {
+    expect(
+      shouldShowSoloControls({ shellSurface: "room", online: false }),
+    ).toBe(false);
+  });
+
+  it("hides solo controls once online on any surface", () => {
+    expect(
+      shouldShowSoloControls({ shellSurface: "solo", online: true }),
+    ).toBe(false);
+  });
+
+  it("allows solo controls only for solo surface offline", () => {
+    expect(
+      shouldShowSoloControls({ shellSurface: "solo", online: false }),
+    ).toBe(true);
+  });
+});
 
 describe("deriveChromeState", () => {
   it("keeps solo ready chrome before deal", () => {

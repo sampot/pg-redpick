@@ -39,8 +39,16 @@ describe("sources smoke", () => {
   it("syncLayoutChrome derives data-layout from chrome state (§3.6)", () => {
     const src = readFileSync(new URL("./app.js", import.meta.url), "utf8");
     expect(src).toMatch(/deriveChromeState/);
+    expect(src).toMatch(/shouldShowSoloControls/);
     expect(src).toMatch(/dataset\.layout/);
     expect(src).toMatch(/function syncLayoutChrome\(/);
+  });
+
+  it("room surface CSS hides solo controls (§8.4)", () => {
+    const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+    expect(css).toMatch(
+      /data-pg-surface=["']room["'][\s\S]*?#solo-controls/,
+    );
   });
 
   it("styles collapse hero／rules in match and reflow short landscape (§3.7)", () => {

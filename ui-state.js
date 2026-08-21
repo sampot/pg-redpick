@@ -4,6 +4,16 @@
  */
 
 /**
+ * Solo「開局／重來」僅單機且非包廂面。
+ * `room` 面在尚未入座時也不可露單機控件（§8.4）。
+ * @param {{ shellSurface: string, online: boolean }} opts
+ */
+export function shouldShowSoloControls({ shellSurface, online }) {
+  if (shellSurface === "room" || online) return false;
+  return true;
+}
+
+/**
  * @param {{
  *   mode: "solo" | "online",
  *   status: string,

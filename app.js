@@ -19,7 +19,10 @@ import {
   roleToSeat,
 } from "./protocol.js";
 import { readPgSurface } from "./shellSurface.js";
-import { deriveChromeState } from "./ui-state.js";
+import {
+  deriveChromeState,
+  shouldShowSoloControls,
+} from "./ui-state.js";
 
 const shellSurface = readPgSurface();
 document.body.dataset.pgSurface = shellSurface;
@@ -380,27 +383,38 @@ function celebrate(result) {
 }
 
 function syncLayoutChrome() {
-  const mode = isOnline() ? "online" : "solo";
-  const status = isOnline()
+  const online = isOnline();
+  const mode = online || shellSurface === "room" ? "online" : "solo";
+  const status = online
     ? onlineView.status || onlineStatus
-    : game.status;
+    : shellSurface === "room"
+      ? onlineStatus || "waiting"
+      : game.status;
   const chrome = deriveChromeState({ mode, status });
   document.body.dataset.layout = chrome.layout;
+  document.body.dataset.onlineRole = online ? onlineRole : "";
 
-  if (!isOnline()) {
-    if (chrome.layout === "match") {
-      soloControls.hidden = true;
-    } else if (chrome.layout === "over") {
-      soloControls.hidden = false;
-      btnDeal.hidden = true;
-      btnReset.hidden = false;
-      btnReset.textContent = "再來一局";
-    } else {
-      soloControls.hidden = false;
-      btnDeal.hidden = false;
-      btnReset.hidden = false;
-      btnReset.textContent = "重來";
-    }
+  const showSolo = shouldShowSoloControls({
+    shellSurface,
+    online,
+  });
+  if (!showSolo) {
+    soloControls.hidden = true;
+    return;
+  }
+
+  if (chrome.layout === "match") {
+    soloControls.hidden = true;
+  } else if (chrome.layout === "over") {
+    soloControls.hidden = false;
+    btnDeal.hidden = true;
+    btnReset.hidden = false;
+    btnReset.textContent = "再來一局";
+  } else {
+    soloControls.hidden = false;
+    btnDeal.hidden = false;
+    btnReset.hidden = false;
+    btnReset.textContent = "重來";
   }
 }
 

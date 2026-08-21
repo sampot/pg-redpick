@@ -114,6 +114,17 @@ main {
 }
 
 /* —— Play layouts: table-first (§3.6) —— */
+
+/* Room／連線：永不露單機開局／重來（§8.4；含尚未入座） */
+body[data-pg-surface="room"] #solo-controls {
+  display: none !important;
+}
+
+body[data-layout="setup"] .action-bar,
+body[data-layout="over"] .action-bar {
+  display: none;
+}
+
 body[data-layout="match"] .hero,
 body[data-layout="over"] .hero {
   display: none;
