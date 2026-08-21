@@ -6,6 +6,17 @@
 
 也可當作 [Playgrounds（遊樂場）](https://play.samkuo.me/) 的 **SAM**（`index.html` 入口）。
 
+## 包廂四人連線
+
+Session protocol：`redpick.v1`（roles＝`host`＋`p2`＋`p3`＋`p4`）。在純玩版包廂（`go`）由主持「玩遊戲」選撿紅點、自動入座滿四人後，主持按「發牌開局」。
+
+| 入口 | `pg_surface` | 行為 |
+| --- | --- | --- |
+| go `/s/pg-redpick` | `solo`（缺省） | 只單機（你＋三 AI） |
+| 包廂大螢幕 | `room` | 只四人連線；入座席由包廂殼層完成 |
+
+快樂路徑＝包廂 [`session_play`](https://github.com/sampot/playgrounds/blob/main/docs/PG-GO-ROOM-PLAY-PLAN.md)，不是 `/s/` 內另鑄邀請。
+
 ## 一鍵開 SAM 小
 
 **[一鍵開 SAM 小](https://play.samkuo.me/?open=sampot%2Fpg-redpick&name=%E6%92%BF%E7%B4%85%E9%BB%9E)**
@@ -50,13 +61,15 @@ python3 -m http.server 8080
 
 | 檔案 | 說明 |
 | --- | --- |
-| `index.html` | 結構 |
+| `index.html` | 結構；`sam:protocol`／`sam:capabilities` |
 | `styles.css` | 手機優先／桌面遞增、牌桌視覺 |
-| `app.js` | UI、預覽、動畫回饋 |
+| `app.js` | UI、單機 AI、包廂連線（`/api/online/*`） |
 | `game.js` | 發牌、對點、加成 |
 | `ai.js` | 簡易人機（偏好清桌／多紅） |
 | `audio.js` | Web Audio 合成音效 |
-| `functions.js` | Playgrounds 可選 stub |
+| `protocol.js` | `redpick.v1` 常數 |
+| `shellSurface.js` | `pg_surface` solo／room |
+| `functions.js` | Host session domain＋`env.HOST` UI 代理 |
 
 ## License
 

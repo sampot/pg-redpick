@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "rev": "04fd4a2",
+  "rev": "redpick-v1",
   "files": [
     "ai.js",
     "app.js",
@@ -8,6 +8,8 @@
     "functions.js",
     "game.js",
     "index.html",
+    "protocol.js",
+    "shellSurface.js",
     "styles.css"
   ]
 }

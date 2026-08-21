@@ -9,7 +9,14 @@ import {
   RANKS,
   SUITS,
 } from "./game.js";
+import {
+  REDPICK_ROLES,
+  REDPICK_SEAT_NAMES,
+  roleToSeat,
+} from "./protocol.js";
+import { readPgSurface } from "./shellSurface.js";
 
+const shellSurface = readPgSurface();
 const audio = new RedpickAudio();
 const game = new RedpickGame();
 
@@ -28,15 +35,68 @@ const btnReset = document.getElementById("btn-reset");
 const btnPlay = document.getElementById("btn-play");
 const btnClear = document.getElementById("btn-clear");
 const btnMute = document.getElementById("btn-mute");
+const soloControls = document.getElementById("solo-controls");
+const onlineControls = document.getElementById("online-controls");
+const onlineMeta = document.getElementById("online-meta");
+const btnOnlineDeal = document.getElementById("btn-online-deal");
+const btnOnlineReset = document.getElementById("btn-online-reset");
+const tagline = document.querySelector(".tagline");
 
 /** @type {number | null} */
 let selectedId = null;
 let aiTimer = 0;
 let busy = false;
 
+/** @type {"idle"|"host"|"p2"|"p3"|"p4"} */
+let onlineRole = "idle";
+/** @type {"waiting"|"ready"|"active"|"ended"|string} */
+let onlineStatus = "waiting";
+let mySeat = 0;
+/** @type {BroadcastChannel | null} */
+let sessionChannel = null;
+let lastSeq = 0;
+let seatPollTimer = 0;
+
+/** Online view (fogged). */
+let onlineView = {
+  status: "waiting",
+  turn: 0,
+  table: /** @type {import("./game.js").Card[]} */ ([]),
+  hand: /** @type {import("./game.js").Card[]} */ ([]),
+  handCounts: [0, 0, 0, 0],
+  liveScores: [0, 0, 0, 0],
+  streaks: [0, 0, 0, 0],
+  stockCount: 0,
+  message: "",
+  winner: /** @type {number | null} */ (null),
+  names: [...REDPICK_SEAT_NAMES],
+  seatedCount: 0,
+};
+
+function isOnline() {
+  return onlineRole !== "idle";
+}
+
 function setStatus(msg, tone = "") {
   statusEl.textContent = msg;
   statusEl.dataset.tone = tone;
+}
+
+/**
+ * Visual index 0 = bottom (me). Map logical seat → visual.
+ * @param {number} logical
+ */
+function toVisual(logical) {
+  if (!isOnline()) return logical;
+  return (logical - mySeat + 4) % 4;
+}
+
+/**
+ * @param {number} visual
+ */
+function toLogical(visual) {
+  if (!isOnline()) return visual;
+  return (visual + mySeat) % 4;
 }
 
 /**
@@ -60,32 +120,102 @@ function renderCard(card, opts = {}) {
   return el;
 }
 
+function viewScores() {
+  if (isOnline()) return onlineView.liveScores;
+  return game.status === "over" ? game.scores : game.liveScores();
+}
+
+function viewStreaks() {
+  return isOnline() ? onlineView.streaks : game.streaks;
+}
+
+function viewTurn() {
+  return isOnline() ? onlineView.turn : game.turn;
+}
+
+function viewStatusPlaying() {
+  if (isOnline()) return onlineView.status === "active";
+  return game.status === "playing";
+}
+
+function viewStatusOver() {
+  if (isOnline()) return onlineView.status === "ended";
+  return game.status === "over";
+}
+
+function viewNames() {
+  return isOnline() ? onlineView.names : game.names;
+}
+
 function renderScores() {
-  const scores = game.status === "over" ? game.scores : game.liveScores();
+  const scores = viewScores();
   const best = Math.max(...scores);
-  for (let i = 0; i < 4; i++) {
-    document.getElementById(`sc-${i}`).textContent = String(scores[i]);
-    const chip = document.querySelector(`.score-chip[data-seat="${i}"]`);
-    chip?.classList.toggle("is-turn", game.status === "playing" && game.turn === i);
-    chip?.classList.toggle("is-lead", scores[i] === best && best > 0);
-    const st = document.getElementById(`streak-${i}`);
+  const streaks = viewStreaks();
+  const turn = viewTurn();
+  const playing = viewStatusPlaying();
+  const names = viewNames();
+
+  for (let visual = 0; visual < 4; visual++) {
+    const logical = toLogical(visual);
+    const sc = document.getElementById(`sc-${visual}`);
+    if (sc) sc.textContent = String(scores[logical] ?? 0);
+    const chip = document.querySelector(`.score-chip[data-seat="${visual}"]`);
+    chip?.classList.toggle("is-turn", playing && turn === logical);
+    chip?.classList.toggle(
+      "is-lead",
+      (scores[logical] ?? 0) === best && best > 0,
+    );
+    const nameEl = document.querySelector(
+      `.who-name[data-name-seat="${visual}"]`,
+    );
+    if (nameEl) {
+      nameEl.textContent =
+        visual === 0 ? "你" : names[logical] || `席${logical + 1}`;
+    }
+    const st = document.getElementById(`streak-${visual}`);
     if (st) {
-      if (game.streaks[i] >= 2 && game.status === "playing") {
+      if ((streaks[logical] ?? 0) >= 2 && playing) {
         st.hidden = false;
-        st.textContent = `連×${game.streaks[i]}`;
+        st.textContent = `連×${streaks[logical]}`;
       } else {
         st.hidden = true;
       }
     }
   }
-  scoreYou.textContent = String(scores[0]);
-  streakLabel.textContent = `×${game.streaks[0]}`;
+  scoreYou.textContent = String(scores[mySeat] ?? scores[0] ?? 0);
+  streakLabel.textContent = `×${streaks[mySeat] ?? streaks[0] ?? 0}`;
+}
+
+function myHand() {
+  if (isOnline()) return onlineView.hand || [];
+  return game.hands[0];
+}
+
+function tableCards() {
+  if (isOnline()) return onlineView.table || [];
+  return game.table;
 }
 
 function updatePreview() {
-  if (selectedId == null || game.turn !== 0 || game.status !== "playing") {
+  const hand = myHand();
+  const myTurn =
+    viewStatusPlaying() && viewTurn() === mySeat && (!isOnline() || true);
+  if (selectedId == null || !myTurn) {
     previewEl.hidden = true;
     previewEl.textContent = "";
+    return;
+  }
+  if (isOnline()) {
+    const card = hand.find((c) => c.id === selectedId);
+    if (!card) {
+      previewEl.hidden = true;
+      return;
+    }
+    const matches = tableCards().filter((t) => t.rank === card.rank);
+    previewEl.hidden = false;
+    previewEl.textContent = matches.length
+      ? `可對 ${matches.length} 張`
+      : "對不到 → 放到桌上";
     return;
   }
   const prev = previewCapture(game, 0, selectedId);
@@ -101,22 +231,20 @@ function updatePreview() {
 
 function renderHand() {
   handEl.innerHTML = "";
-  const hand = game.hands[0];
+  const hand = myHand();
+  const myTurn = viewStatusPlaying() && viewTurn() === mySeat && !busy;
+  const table = tableCards();
 
   for (const card of hand) {
-    const matchable =
-      game.status === "playing" &&
-      game.turn === 0 &&
-      game.table.some((t) => t.rank === card.rank);
+    const matchable = myTurn && table.some((t) => t.rank === card.rank);
     const el = renderCard(card, {
       selected: selectedId === card.id,
       matchable,
     });
     el.addEventListener("click", async () => {
       await audio.unlock();
-      if (game.status !== "playing" || game.turn !== 0 || busy) return;
+      if (!myTurn) return;
       if (selectedId === card.id) {
-        // Second tap = play
         void doPlay();
         return;
       }
@@ -130,13 +258,26 @@ function renderHand() {
     handEl.appendChild(el);
   }
   document.getElementById("count-0").textContent = String(hand.length);
+  const vname = document.querySelector('[data-vname="0"]');
+  if (vname) vname.textContent = "你的手牌";
 }
 
 function renderOpponents() {
-  for (const seat of [1, 2, 3]) {
-    const wrap = document.getElementById(`op-${seat}`);
-    const n = game.hands[seat].length;
-    document.getElementById(`count-${seat}`).textContent = String(n);
+  const playing = viewStatusPlaying();
+  const turn = viewTurn();
+  const names = viewNames();
+  const counts = isOnline()
+    ? onlineView.handCounts
+    : game.hands.map((h) => h.length);
+  const streaks = viewStreaks();
+
+  for (const visual of [1, 2, 3]) {
+    const logical = toLogical(visual);
+    const wrap = document.getElementById(`op-${visual}`);
+    const n = counts[logical] ?? 0;
+    document.getElementById(`count-${visual}`).textContent = String(n);
+    const nameEl = document.querySelector(`[data-vname="${visual}"]`);
+    if (nameEl) nameEl.textContent = names[logical] || `席${logical + 1}`;
     wrap.innerHTML = "";
     const show = Math.min(n, 8);
     for (let i = 0; i < show; i++) {
@@ -145,26 +286,32 @@ function renderOpponents() {
       wrap.appendChild(back);
     }
     document
-      .querySelector(`.seat[data-seat="${seat}"]`)
-      ?.classList.toggle("is-turn", game.status === "playing" && game.turn === seat);
+      .querySelector(`.seat[data-visual="${visual}"]`)
+      ?.classList.toggle("is-turn", playing && turn === logical);
+    const st = document.getElementById(`streak-${visual}`);
+    if (st) {
+      if ((streaks[logical] ?? 0) >= 2 && playing) {
+        st.hidden = false;
+        st.textContent = `連×${streaks[logical]}`;
+      } else st.hidden = true;
+    }
   }
   document
-    .querySelector(`.seat[data-seat="0"]`)
-    ?.classList.toggle("is-turn", game.status === "playing" && game.turn === 0);
+    .querySelector(`.seat[data-visual="0"]`)
+    ?.classList.toggle("is-turn", playing && turn === mySeat);
 }
 
 function renderTable() {
   tableEl.innerHTML = "";
   let selectedRank = -1;
   if (selectedId != null) {
-    const c = game.hands[0].find((h) => h.id === selectedId);
+    const c = myHand().find((h) => h.id === selectedId);
     if (c) selectedRank = c.rank;
   }
-  for (const c of game.table) {
+  for (const c of tableCards()) {
     const el = renderCard(c, {
       static: true,
       target: selectedRank === c.rank,
-      pop: game.lastAct?.captured?.some((x) => x.id === c.id),
     });
     tableEl.appendChild(el);
   }
@@ -172,19 +319,36 @@ function renderTable() {
 }
 
 function syncActions() {
-  const myTurn = game.status === "playing" && game.turn === 0 && !busy;
+  const myTurn = viewStatusPlaying() && viewTurn() === mySeat && !busy;
   btnPlay.disabled = !myTurn || selectedId == null;
   btnClear.disabled = selectedId == null;
-  btnDeal.disabled = busy || game.status === "playing";
-  turnLabel.textContent =
-    game.status === "ready" ? "—" : game.status === "over" ? "終局" : game.names[game.turn];
-  stockLabel.textContent = String(game.stock.length);
-  if (myTurn && selectedId != null) {
+  if (!isOnline()) {
+    btnDeal.disabled = busy || game.status === "playing";
+  }
+  const names = viewNames();
+  if (viewStatusOver()) {
+    turnLabel.textContent = "終局";
+  } else if (!viewStatusPlaying() && (!isOnline() ? game.status === "ready" : true)) {
+    turnLabel.textContent = isOnline()
+      ? onlineStatus === "ready"
+        ? "可發牌"
+        : "等候"
+      : "—";
+  } else {
+    turnLabel.textContent = names[viewTurn()] || "—";
+  }
+  stockLabel.textContent = String(
+    isOnline() ? onlineView.stockCount : game.stock.length,
+  );
+  if (myTurn && selectedId != null && !isOnline()) {
     const prev = previewCapture(game, 0, selectedId);
     btnPlay.textContent = prev?.capture ? `撿走 +${prev.total}` : "放到桌上";
+  } else if (myTurn && selectedId != null) {
+    btnPlay.textContent = "出牌撿點";
   } else {
     btnPlay.textContent = "出牌撿點";
   }
+  syncOnlineControls();
 }
 
 function spawnFloat(text, big = false) {
@@ -197,7 +361,7 @@ function spawnFloat(text, big = false) {
 
 function celebrate(result) {
   if (!result) return;
-  const gain = result.base + result.bonus;
+  const gain = (result.base || 0) + (result.bonus || 0);
   if (gain > 0) spawnFloat(`+${gain}`, result.swept || result.bonus >= 15);
   if (result.swept) {
     tableRoot?.classList.remove("sweep-flash");
@@ -214,18 +378,22 @@ function renderAll(tone = "") {
   renderOpponents();
   renderTable();
   renderScores();
+  const msg = isOnline()
+    ? onlineView.message || statusEl.textContent
+    : game.message;
   const autoTone =
     tone ||
-    (game.status === "over"
+    (viewStatusOver()
       ? "win"
-      : game.turn === 0 && game.status === "playing"
+      : viewTurn() === mySeat && viewStatusPlaying()
         ? "turn"
         : "");
-  setStatus(game.message, autoTone);
+  if (!isOnline() || onlineView.message) setStatus(msg, autoTone);
   syncActions();
 }
 
 function scheduleAi() {
+  if (isOnline()) return;
   window.clearTimeout(aiTimer);
   if (game.status !== "playing" || game.turn === 0 || busy) return;
   busy = true;
@@ -271,7 +439,55 @@ async function runAiTurn() {
 
 async function doPlay() {
   await audio.unlock();
-  if (busy || game.turn !== 0 || selectedId == null) return;
+  if (busy || selectedId == null) return;
+  if (viewTurn() !== mySeat || !viewStatusPlaying()) return;
+
+  if (isOnline()) {
+    busy = true;
+    syncActions();
+    try {
+      let data;
+      if (onlineRole === "host") {
+        data = await hostDomain("/api/session/act", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            role: "host",
+            payload: { type: "play", cardId: selectedId },
+          }),
+        });
+      } else {
+        // Guest SESSION.act: payload only (shell adds role).
+        data = await domain("/api/session/act", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type: "play", cardId: selectedId }),
+        });
+      }
+      selectedId = null;
+      if (data.state) applyOnlineState(data.state);
+      if (data.events) {
+        for (const ev of data.events) applyEvent(ev);
+      }
+      if (data.state?.lastAct?.result) {
+        const r = data.state.lastAct.result;
+        audio.capture((r.base || 0) + (r.bonus || 0));
+        celebrate(r);
+      } else if (data.events?.[0]?.captured) {
+        audio.capture(data.events[0].points || 0);
+      } else audio.place();
+      if (onlineView.status === "ended") audio.win();
+      renderAll();
+    } catch (e) {
+      audio.deny();
+      setStatus(String(e.message || e), "warn");
+    } finally {
+      busy = false;
+      syncActions();
+    }
+    return;
+  }
+
   const r = game.play(0, selectedId);
   if (!r.ok) {
     audio.deny();
@@ -288,7 +504,368 @@ async function doPlay() {
   if (game.status === "playing") scheduleAi();
 }
 
+/* ——— Online (redpick.v1) ——— */
+
+async function online(path, init) {
+  const res = await fetch("/api/online" + path, init);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || data.code || res.statusText);
+    err.code = data.code;
+    throw err;
+  }
+  return data;
+}
+
+async function domain(path, init) {
+  const res = await fetch(path, init);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || data.code || res.statusText);
+    err.code = data.code;
+    throw err;
+  }
+  return data;
+}
+
+async function hostDomain(path, init) {
+  const method = (init && init.method) || "GET";
+  const headers = (init && init.headers) || undefined;
+  const body = init && typeof init.body === "string" ? init.body : undefined;
+  return online("/domain", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path, method, headers, body }),
+  });
+}
+
+function applyOnlineState(state) {
+  if (!state || typeof state !== "object") return;
+  if (typeof state.seq === "number") lastSeq = Math.max(lastSeq, state.seq);
+  onlineStatus = state.status || onlineStatus;
+  onlineView = {
+    status: state.status || onlineView.status,
+    turn: Number(state.turn) || 0,
+    table: Array.isArray(state.table) ? state.table : onlineView.table,
+    hand: Array.isArray(state.hand) ? state.hand : onlineView.hand,
+    handCounts: Array.isArray(state.handCounts)
+      ? state.handCounts
+      : onlineView.handCounts,
+    liveScores: Array.isArray(state.liveScores)
+      ? state.liveScores
+      : Array.isArray(state.scores)
+        ? state.scores
+        : onlineView.liveScores,
+    streaks: Array.isArray(state.streaks) ? state.streaks : onlineView.streaks,
+    stockCount:
+      typeof state.stockCount === "number"
+        ? state.stockCount
+        : onlineView.stockCount,
+    message: state.message || onlineView.message,
+    winner:
+      state.winner === 0 ||
+      state.winner === 1 ||
+      state.winner === 2 ||
+      state.winner === 3
+        ? state.winner
+        : state.winner == null
+          ? null
+          : onlineView.winner,
+    names: Array.isArray(state.names) ? state.names : onlineView.names,
+    seatedCount:
+      typeof state.seatedCount === "number"
+        ? state.seatedCount
+        : onlineView.seatedCount,
+  };
+  if (state.channelName) bindSessionChannel(state.channelName);
+  renderAll();
+}
+
+function applyEvent(event) {
+  if (!event || typeof event !== "object") return;
+  const type = String(event.type || "");
+  if (typeof event.seq === "number") {
+    if (event.seq <= lastSeq && type !== "session.closed") return;
+    lastSeq = Math.max(lastSeq, event.seq);
+  }
+  if (type === "session.closed") {
+    onlineStatus = "waiting";
+    setStatus(
+      event.reason === "host_closed"
+        ? "主持已結束這一場"
+        : "有人離開，這一局結束",
+      "warn",
+    );
+    onlineView.message = statusEl.textContent;
+    syncOnlineControls();
+    return;
+  }
+  if (type === "match.status") {
+    onlineStatus = event.status || onlineStatus;
+    onlineView.status = onlineStatus;
+    onlineView.seatedCount =
+      typeof event.seatedCount === "number"
+        ? event.seatedCount
+        : onlineView.seatedCount;
+    syncOnlineControls();
+    return;
+  }
+  if (type === "match.dealt" || type === "match.played" || type === "match.over") {
+    applyPublicEventFields(event);
+    // Guest needs private hand via sync act (tunnel getState is a stub).
+    void loadOnlineState();
+    return;
+  }
+  if (type === "match.reset") {
+    applyPublicEventFields(event);
+    onlineView.hand = [];
+    void loadOnlineState();
+  }
+}
+
+function applyPublicEventFields(event) {
+  if (event.status) {
+    onlineStatus = event.status;
+    onlineView.status = event.status;
+  }
+  if (typeof event.turn === "number") onlineView.turn = event.turn;
+  if (Array.isArray(event.table)) onlineView.table = event.table;
+  if (Array.isArray(event.handCounts)) onlineView.handCounts = event.handCounts;
+  if (typeof event.stockCount === "number") {
+    onlineView.stockCount = event.stockCount;
+  }
+  if (Array.isArray(event.liveScores)) onlineView.liveScores = event.liveScores;
+  if (Array.isArray(event.scores)) onlineView.liveScores = event.scores;
+  if (Array.isArray(event.streaks)) onlineView.streaks = event.streaks;
+  if (typeof event.message === "string") onlineView.message = event.message;
+  if (
+    event.winner === 0 ||
+    event.winner === 1 ||
+    event.winner === 2 ||
+    event.winner === 3
+  ) {
+    onlineView.winner = event.winner;
+  }
+  renderAll();
+}
+
+function bindSessionChannel(channelName) {
+  if (!channelName) return;
+  if (sessionChannel) {
+    try {
+      sessionChannel.close();
+    } catch {
+      /* ignore */
+    }
+  }
+  sessionChannel = new BroadcastChannel(channelName);
+  sessionChannel.onmessage = (ev) => {
+    const msg = ev.data;
+    if (!msg || msg.type !== "session-event") return;
+    if (msg.event) applyEvent(msg.event);
+  };
+}
+
+async function loadOnlineState() {
+  if (onlineRole === "idle") return null;
+  try {
+    if (onlineRole === "host") {
+      const state = await hostDomain(
+        `/api/session/state?role=${encodeURIComponent(onlineRole)}`,
+        { method: "GET" },
+      );
+      applyOnlineState(state);
+      return state;
+    }
+    // Guest: SESSION.getState is a stub — pull fogged snapshot via sync act.
+    const data = await domain("/api/session/act", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "sync" }),
+    });
+    if (data.state) applyOnlineState(data.state);
+    return data.state ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function syncSeatedPresence() {
+  if (onlineRole !== "host") return;
+  try {
+    const st = await online("/status");
+    const seats = st.seats || [];
+    const seatedRoles = ["host"];
+    for (const r of REDPICK_ROLES) {
+      if (r === "host") continue;
+      if (seats.some((s) => s.role === r)) seatedRoles.push(r);
+    }
+    // Host is always seated when booth play is open
+    if (!seatedRoles.includes("host")) seatedRoles.unshift("host");
+    const data = await hostDomain("/api/session/presence", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ seatedRoles }),
+    });
+    if (data.state) applyOnlineState(data.state);
+    if (data.events) for (const ev of data.events) applyEvent(ev);
+  } catch {
+    /* ignore */
+  }
+}
+
+function startSeatPoll() {
+  stopSeatPoll();
+  seatPollTimer = window.setInterval(() => {
+    void syncSeatedPresence();
+  }, 2000);
+}
+
+function stopSeatPoll() {
+  if (seatPollTimer) {
+    clearInterval(seatPollTimer);
+    seatPollTimer = 0;
+  }
+}
+
+function syncOnlineControls() {
+  if (!isOnline()) {
+    onlineControls.hidden = true;
+    return;
+  }
+  onlineControls.hidden = false;
+  const hosting = onlineRole === "host";
+  const room = shellSurface === "room";
+  btnOnlineDeal.hidden = !(hosting && onlineStatus === "ready");
+  btnOnlineReset.hidden = !(hosting && onlineStatus === "ended");
+  const roleLabel =
+    onlineRole === "host" ? "主持" : `席${mySeat + 1}`;
+  if (onlineStatus === "waiting") {
+    onlineMeta.textContent = room
+      ? `包廂 · ${roleLabel} · 等候滿席（${onlineView.seatedCount}/4）`
+      : `連線 · ${roleLabel} · 等候滿席`;
+  } else if (onlineStatus === "ready") {
+    onlineMeta.textContent = hosting
+      ? "滿席 — 可發牌開局"
+      : "已入座 — 等候主持發牌";
+  } else if (onlineStatus === "active") {
+    onlineMeta.textContent =
+      viewTurn() === mySeat ? "輪到你出牌" : `輪到 ${onlineView.names[viewTurn()]}`;
+  } else if (onlineStatus === "ended") {
+    onlineMeta.textContent = "終局";
+  }
+}
+
+async function onOnlineDeal() {
+  if (onlineRole !== "host") return;
+  setStatus("發牌中…");
+  try {
+    const data = await hostDomain("/api/session/act", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "host", payload: { type: "deal" } }),
+    });
+    selectedId = null;
+    if (data.state) applyOnlineState(data.state);
+    audio.deal();
+    setStatus(onlineView.message || "已發牌", "turn");
+    renderAll("turn");
+  } catch (e) {
+    setStatus(String(e.message || e), "warn");
+  }
+}
+
+async function onOnlineReset() {
+  if (onlineRole !== "host") return;
+  try {
+    const data = await hostDomain("/api/session/act", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "host", payload: { type: "reset" } }),
+    });
+    selectedId = null;
+    if (data.state) applyOnlineState(data.state);
+    setStatus("可再發牌", "");
+  } catch (e) {
+    setStatus(String(e.message || e), "warn");
+  }
+}
+
+async function tryBootAsPlayer() {
+  try {
+    const seat = await domain("/api/session/seat");
+    if (!seat || seat.ready === false) return false;
+    const role = String(seat.role || "");
+    if (!REDPICK_ROLES.includes(role)) return false;
+    onlineRole = /** @type {typeof onlineRole} */ (role);
+    mySeat = roleToSeat(role);
+    const ch = await domain("/api/session/channel");
+    if (ch?.name) bindSessionChannel(ch.name);
+    await loadOnlineState();
+    syncOnlineControls();
+    setStatus(
+      onlineStatus === "ready" || onlineStatus === "active"
+        ? "已入座"
+        : "已入座 — 等候滿席與發牌",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function tryBootAsRoomHost() {
+  if (shellSurface !== "room") return false;
+  try {
+    const st = await online("/status");
+    if (!st?.active || !st.channelName) return false;
+    onlineRole = "host";
+    mySeat = 0;
+    bindSessionChannel(st.channelName);
+    lastSeq = 0;
+    // Ensure domain store exists for booth play
+    try {
+      await hostDomain("/api/session/open", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId: st.sessionId,
+          channelName: st.channelName,
+        }),
+      });
+    } catch {
+      /* may already be open via shell */
+    }
+    await loadOnlineState();
+    startSeatPoll();
+    await syncSeatedPresence();
+    syncOnlineControls();
+    setStatus(
+      onlineStatus === "ready"
+        ? "滿席 — 按「發牌開局」"
+        : "包廂開局 — 等候三人入座",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function applySoloShell() {
+  soloControls.hidden = false;
+  onlineControls.hidden = true;
+  if (tagline) tagline.textContent = "對點數 · 連撿加成 · 清桌大獎";
+}
+
+function applyRoomShell() {
+  soloControls.hidden = true;
+  onlineControls.hidden = false;
+  if (tagline) tagline.textContent = "包廂四人連線 · 對點數撿紅點";
+  window.clearTimeout(aiTimer);
+}
+
 btnDeal.addEventListener("click", async () => {
+  if (isOnline()) return;
   await audio.unlock();
   selectedId = null;
   game.deal();
@@ -298,12 +875,20 @@ btnDeal.addEventListener("click", async () => {
 });
 
 btnReset.addEventListener("click", async () => {
+  if (isOnline()) return;
   await audio.unlock();
   window.clearTimeout(aiTimer);
   busy = false;
   selectedId = null;
   game.reset();
   renderAll();
+});
+
+btnOnlineDeal?.addEventListener("click", () => {
+  void onOnlineDeal();
+});
+btnOnlineReset?.addEventListener("click", () => {
+  void onOnlineReset();
 });
 
 btnPlay.addEventListener("click", () => {
@@ -334,4 +919,26 @@ document.body.addEventListener(
   { once: true },
 );
 
-renderAll();
+async function bootShellSurface() {
+  if (shellSurface === "solo") {
+    applySoloShell();
+    renderAll();
+    return;
+  }
+  if (shellSurface === "room") {
+    applyRoomShell();
+    renderAll();
+    if (await tryBootAsPlayer()) return;
+    for (let i = 0; i < 20; i++) {
+      if (await tryBootAsRoomHost()) return;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    setStatus("包廂開局中 — 等候通道就緒…");
+    return;
+  }
+  applySoloShell();
+  renderAll();
+  void tryBootAsPlayer();
+}
+
+void bootShellSurface();

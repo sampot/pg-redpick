@@ -6,7 +6,12 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="撿紅點：對點數撿牌、連撿／清桌加成。純前端 Playgrounds SAM，適配手機與桌面。"
+      content="撿紅點：對點數撿牌、連撿／清桌加成。單機四人人機；包廂可四人連線（redpick.v1）。"
+    />
+    <meta name="sam:protocol" content="redpick.v1:host+p2+p3+p4" />
+    <meta
+      name="sam:capabilities"
+      content="session:host, platform:invite"
     />
     <title>撿紅點</title>
     <link rel="stylesheet" href="./styles.css" />
@@ -44,9 +49,15 @@
         </div>
       </section>
 
-      <div class="controls">
+      <div class="controls" id="solo-controls">
         <button type="button" id="btn-deal">開局</button>
         <button type="button" id="btn-reset" class="secondary">重來</button>
+      </div>
+
+      <div class="controls" id="online-controls" hidden>
+        <p id="online-meta" class="muted online-meta">包廂對弈</p>
+        <button type="button" id="btn-online-deal" class="primary" hidden>發牌開局</button>
+        <button type="button" id="btn-online-reset" class="secondary" hidden>再來一局</button>
       </div>
 
       <p id="status" class="status" role="status">點「開局」發牌。對到相同點數就能撿走。</p>
@@ -54,28 +65,28 @@
 
       <section class="scores" aria-label="分數板">
         <div class="score-chip" data-seat="0">
-          <span class="who"><i class="dot you"></i>你</span>
+          <span class="who"><i class="dot you"></i><span class="who-name" data-name-seat="0">你</span></span>
           <strong id="sc-0">0</strong>
         </div>
         <div class="score-chip" data-seat="1">
-          <span class="who"><i class="dot p1"></i>小梅</span>
+          <span class="who"><i class="dot p1"></i><span class="who-name" data-name-seat="1">小梅</span></span>
           <strong id="sc-1">0</strong>
         </div>
         <div class="score-chip" data-seat="2">
-          <span class="who"><i class="dot p2"></i>阿心</span>
+          <span class="who"><i class="dot p2"></i><span class="who-name" data-name-seat="2">阿心</span></span>
           <strong id="sc-2">0</strong>
         </div>
         <div class="score-chip" data-seat="3">
-          <span class="who"><i class="dot p3"></i>黑哥</span>
+          <span class="who"><i class="dot p3"></i><span class="who-name" data-name-seat="3">黑哥</span></span>
           <strong id="sc-3">0</strong>
         </div>
       </section>
 
       <section class="table" aria-label="牌桌">
         <div class="table-rim"></div>
-        <div class="seat seat-top" data-seat="2">
+        <div class="seat seat-top" data-visual="2">
           <div class="seat-meta">
-            <span class="seat-name">阿心</span>
+            <span class="seat-name" data-vname="2">阿心</span>
             <span class="seat-count" id="count-2">0</span>
             <span class="seat-streak" id="streak-2" hidden></span>
           </div>
@@ -83,9 +94,9 @@
         </div>
 
         <div class="seat-mid">
-          <div class="seat seat-left" data-seat="1">
+          <div class="seat seat-left" data-visual="1">
             <div class="seat-meta">
-              <span class="seat-name">小梅</span>
+              <span class="seat-name" data-vname="1">小梅</span>
               <span class="seat-count" id="count-1">0</span>
               <span class="seat-streak" id="streak-1" hidden></span>
             </div>
@@ -100,9 +111,9 @@
             <div id="table-cards" class="table-cards" role="list" aria-label="桌上的牌"></div>
           </div>
 
-          <div class="seat seat-right" data-seat="3">
+          <div class="seat seat-right" data-visual="3">
             <div class="seat-meta">
-              <span class="seat-name">黑哥</span>
+              <span class="seat-name" data-vname="3">黑哥</span>
               <span class="seat-count" id="count-3">0</span>
               <span class="seat-streak" id="streak-3" hidden></span>
             </div>
@@ -110,9 +121,9 @@
           </div>
         </div>
 
-        <div class="seat seat-you" data-seat="0">
+        <div class="seat seat-you" data-visual="0">
           <div class="seat-meta">
-            <span class="seat-name">你的手牌</span>
+            <span class="seat-name" data-vname="0">你的手牌</span>
             <span class="seat-count" id="count-0">0</span>
             <span class="seat-streak" id="streak-0" hidden></span>
           </div>
@@ -134,6 +145,7 @@
           <li><strong>加成：</strong>清桌（一次撿光桌上）＋15；一次多張紅牌每多一張＋5；撿到紅 A＋10；連續撿牌每次＋5（連撿×n）。</li>
           <li>合計＝紅點＋加成。剩餘桌牌歸最後撿牌者。</li>
           <li>提示：可對到的手牌會亮金邊；再點一次已選牌可直接出牌。</li>
+          <li>包廂連線：需四人入座；主持發牌；結束這一局由包廂殼層操作。</li>
         </ul>
       </details>
     </main>
