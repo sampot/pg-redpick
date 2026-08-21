@@ -10,13 +10,19 @@ import {
   SUITS,
 } from "./game.js";
 import {
+  planLifecycleResume,
+  planLifecycleSuspend,
+} from "./lifecycle.js";
+import {
   REDPICK_ROLES,
   REDPICK_SEAT_NAMES,
   roleToSeat,
 } from "./protocol.js";
 import { readPgSurface } from "./shellSurface.js";
+import { deriveChromeState } from "./ui-state.js";
 
 const shellSurface = readPgSurface();
+document.body.dataset.pgSurface = shellSurface;
 const audio = new RedpickAudio();
 const game = new RedpickGame();
 
@@ -373,6 +379,31 @@ function celebrate(result) {
   }
 }
 
+function syncLayoutChrome() {
+  const mode = isOnline() ? "online" : "solo";
+  const status = isOnline()
+    ? onlineView.status || onlineStatus
+    : game.status;
+  const chrome = deriveChromeState({ mode, status });
+  document.body.dataset.layout = chrome.layout;
+
+  if (!isOnline()) {
+    if (chrome.layout === "match") {
+      soloControls.hidden = true;
+    } else if (chrome.layout === "over") {
+      soloControls.hidden = false;
+      btnDeal.hidden = true;
+      btnReset.hidden = false;
+      btnReset.textContent = "再來一局";
+    } else {
+      soloControls.hidden = false;
+      btnDeal.hidden = false;
+      btnReset.hidden = false;
+      btnReset.textContent = "重來";
+    }
+  }
+}
+
 function renderAll(tone = "") {
   renderHand();
   renderOpponents();
@@ -389,6 +420,7 @@ function renderAll(tone = "") {
         ? "turn"
         : "");
   if (!isOnline() || onlineView.message) setStatus(msg, autoTone);
+  syncLayoutChrome();
   syncActions();
 }
 
@@ -926,6 +958,51 @@ document.body.addEventListener(
   { once: true },
 );
 
+/** @type {{ resumeAi: boolean, resumeSeatPoll: boolean } | null} */
+let lifecycleSnap = null;
+
+function suspendGame() {
+  const plan = planLifecycleSuspend({
+    aiRunning: Boolean(aiTimer),
+    seatPollRunning: Boolean(seatPollTimer),
+  });
+  lifecycleSnap = {
+    resumeAi: Boolean(lifecycleSnap?.resumeAi) || plan.resumeAi,
+    resumeSeatPoll:
+      Boolean(lifecycleSnap?.resumeSeatPoll) || plan.resumeSeatPoll,
+  };
+  if (plan.stopAi) {
+    window.clearTimeout(aiTimer);
+    aiTimer = 0;
+    busy = false;
+  }
+  if (plan.stopSeatPoll) stopSeatPoll();
+  if (plan.clearSelection) {
+    selectedId = null;
+  }
+  if (plan.suspendAudio) audio.suspend();
+  syncActions();
+}
+
+function resumeGame() {
+  if (!lifecycleSnap) return;
+  const plan = planLifecycleResume(lifecycleSnap, {
+    soloPlaying: !isOnline() && game.status === "playing",
+    hosting: onlineRole === "host",
+  });
+  lifecycleSnap = null;
+  if (plan.resumeAudio) audio.resume();
+  if (plan.resumeSeatPoll) startSeatPoll();
+  if (plan.resumeAi) scheduleAi();
+  renderAll();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") suspendGame();
+  else resumeGame();
+});
+window.addEventListener("pagehide", suspendGame);
+
 async function bootShellSurface() {
   if (shellSurface === "solo") {
     applySoloShell();
@@ -948,4 +1025,16 @@ async function bootShellSurface() {
   void tryBootAsPlayer();
 }
 
-void bootShellSurface();
+async function boot() {
+  try {
+    const pg = /** @type {any} */ (window).PG;
+    if (pg?.ready && typeof pg.ready.then === "function") {
+      await pg.ready;
+    }
+  } catch {
+    /* static serve without host SDK */
+  }
+  await bootShellSurface();
+}
+
+void boot();

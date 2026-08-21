@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "rev": "seat-names-1",
+  "rev": "guide-ux-1",
   "files": [
     "ai.js",
     "app.js",
@@ -8,8 +8,10 @@
     "functions.js",
     "game.js",
     "index.html",
+    "lifecycle.js",
     "protocol.js",
     "shellSurface.js",
-    "styles.css"
+    "styles.css",
+    "ui-state.js"
   ]
 }

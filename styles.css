@@ -113,6 +113,78 @@ main {
   font-size: 0.9rem;
 }
 
+/* —— Play layouts: table-first (§3.6) —— */
+body[data-layout="match"] .hero,
+body[data-layout="over"] .hero {
+  display: none;
+}
+
+body[data-layout="match"] .rules,
+body[data-layout="over"] .rules {
+  display: none;
+}
+
+body[data-layout="match"] .scores {
+  display: none;
+}
+
+body[data-layout="match"] main,
+body[data-layout="over"] main {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 48rem);
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+}
+
+body[data-layout="match"] .stage,
+body[data-layout="over"] .stage {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0.4rem;
+}
+
+body[data-layout="match"] #online-controls {
+  display: none;
+}
+
+body[data-layout="match"] .meter,
+body[data-layout="over"] .meter {
+  padding: 0.4rem 0.65rem;
+  gap: 0.35rem 0.55rem;
+}
+
+body[data-layout="match"] .meter-item .label,
+body[data-layout="over"] .meter-item .label {
+  font-size: 0.65rem;
+}
+
+body[data-layout="match"] .status,
+body[data-layout="over"] .status {
+  padding: 0.45rem 0.65rem;
+  min-height: 0;
+  font-size: 0.92rem;
+}
+
+body[data-layout="match"] .table,
+body[data-layout="over"] .table {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+body[data-layout="match"] .action-bar {
+  padding-top: 0.25rem;
+}
+
+.stage {
+  display: contents;
+}
+
 .meter {
   display: flex;
   flex-wrap: wrap;
@@ -710,6 +782,130 @@ button:disabled {
 
   .table-area {
     min-height: 8rem;
+  }
+}
+
+/* Short landscape: side chrome + table priority (§3.7) */
+@media (orientation: landscape) and (max-height: 560px) {
+  body[data-layout="match"] main,
+  body[data-layout="over"] main {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: 0.35rem 0.5rem max(0.35rem, env(safe-area-inset-bottom));
+    gap: 0.45rem;
+  }
+
+  body[data-layout="match"] .meter,
+  body[data-layout="over"] .meter {
+    flex: 0 0 9.75rem;
+    flex-direction: column;
+    align-items: stretch;
+    align-self: stretch;
+    overflow: auto;
+    max-height: 100%;
+  }
+
+  body[data-layout="match"] .meter-actions,
+  body[data-layout="over"] .meter-actions {
+    justify-content: flex-start;
+  }
+
+  body[data-layout="match"] .meter-actions button,
+  body[data-layout="over"] .meter-actions button {
+    flex: 1 1 auto;
+  }
+
+  body[data-layout="match"] .controls,
+  body[data-layout="over"] .controls {
+    display: none;
+  }
+
+  body[data-layout="over"] main {
+    position: relative;
+  }
+
+  body[data-layout="over"] #solo-controls,
+  body[data-layout="over"] #online-controls {
+    display: flex;
+    flex: 0 0 9.75rem;
+    flex-direction: column;
+    position: absolute;
+    left: 0.5rem;
+    bottom: max(0.35rem, env(safe-area-inset-bottom));
+    width: 9.75rem;
+    z-index: 8;
+  }
+
+  body[data-layout="match"] .stage,
+  body[data-layout="over"] .stage {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    gap: 0.3rem;
+  }
+
+  body[data-layout="match"] .table,
+  body[data-layout="over"] .table {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  body[data-layout="match"] .action-bar,
+  body[data-layout="over"] .action-bar {
+    position: static;
+    backdrop-filter: none;
+    background: transparent;
+    padding-bottom: 0;
+  }
+
+  body[data-layout="match"] .scores,
+  body[data-layout="over"] .scores,
+  body[data-layout="match"] .hero,
+  body[data-layout="over"] .hero,
+  body[data-layout="match"] .rules,
+  body[data-layout="over"] .rules {
+    display: none;
+  }
+
+  body[data-layout="match"] .seat-mid {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.8fr) minmax(0, 0.85fr);
+  }
+
+  body[data-layout="match"] .table-area {
+    min-height: 4.5rem;
+  }
+
+  body[data-layout="match"] .card {
+    width: 2.2rem;
+    height: 3.05rem;
+    font-size: 0.75rem;
+    margin-left: -0.55rem;
+  }
+
+  body[data-layout="match"] .card.static {
+    width: 1.95rem;
+    height: 2.7rem;
+    font-size: 0.7rem;
+  }
+
+  body[data-layout="match"] .hand {
+    padding-top: 0.45rem;
+  }
+}
+
+@media (min-width: 52rem) {
+  body[data-layout="match"] main,
+  body[data-layout="over"] main {
+    width: min(100%, 56rem);
   }
 }
 

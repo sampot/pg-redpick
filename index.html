@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="撿紅點：對點數撿牌、連撿／清桌加成。單機四人人機；包廂可四人連線（redpick.v1）。"
+      content="撿紅點：對點數撿牌、連撿／清桌加成。單機四人人機；包廂可四人連線。"
     />
     <meta name="sam:protocol" content="redpick.v1:host+p2+p3+p4" />
     <meta
@@ -16,7 +16,7 @@
     <title>撿紅點</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
+  <body data-layout="setup">
     <div class="ambiance" aria-hidden="true"></div>
     <main>
       <header class="hero">
@@ -60,6 +60,7 @@
         <button type="button" id="btn-online-reset" class="secondary" hidden>再來一局</button>
       </div>
 
+      <div class="stage">
       <p id="status" class="status" role="status">點「開局」發牌。對到相同點數就能撿走。</p>
       <div id="float-layer" class="float-layer" aria-hidden="true"></div>
 
@@ -135,6 +136,7 @@
         <button type="button" id="btn-play" class="primary" disabled>出牌撿點</button>
         <button type="button" id="btn-clear" class="secondary" disabled>取消</button>
       </div>
+    </div>
 
       <details class="rules">
         <summary>規則與加成</summary>

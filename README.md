@@ -69,6 +69,8 @@ python3 -m http.server 8080
 | `audio.js` | Web Audio 合成音效 |
 | `protocol.js` | `redpick.v1` 常數 |
 | `shellSurface.js` | `pg_surface` solo／room |
+| `ui-state.js` | 畫面相位（setup／match／over） |
+| `lifecycle.js` | 背景暫停計畫（§3.5） |
 | `functions.js` | Host session domain＋`env.HOST` UI 代理 |
 
 ## License

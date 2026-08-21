@@ -26,6 +26,18 @@ export class RedpickAudio {
     this.enabled = on;
   }
 
+  /** Pause AudioContext while the page is hidden (§3.5). */
+  suspend() {
+    if (this.ctx?.state === "running") void this.ctx.suspend();
+  }
+
+  /** Resume AudioContext after the page is visible again. */
+  resume() {
+    if (this.ctx?.state === "suspended" && this.enabled) {
+      void this.ctx.resume();
+    }
+  }
+
   /**
    * @param {number} freq
    * @param {number} dur
