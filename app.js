@@ -196,7 +196,10 @@ function renderScores() {
 }
 
 function myHand() {
-  if (isOnline()) return onlineView.hand || [];
+  if (isOnline()) {
+    if (onlineRole === "spectator") return [];
+    return onlineView.hand || [];
+  }
   return game.hands[0];
 }
 
@@ -486,6 +489,7 @@ async function runAiTurn() {
 async function doPlay() {
   await audio.unlock();
   if (busy || selectedId == null) return;
+  if (onlineRole === "spectator") return;
   if (viewTurn() !== mySeat || !viewStatusPlaying()) return;
 
   if (isOnline()) {
@@ -788,9 +792,14 @@ function syncOnlineControls() {
   }
   onlineControls.hidden = false;
   const hosting = onlineRole === "host";
+  const asSpectator = onlineRole === "spectator";
   const room = shellSurface === "room";
   btnOnlineDeal.hidden = !(hosting && onlineStatus === "ready");
   btnOnlineReset.hidden = !(hosting && onlineStatus === "ended");
+  if (asSpectator) {
+    onlineMeta.textContent = room ? "包廂觀戰" : "觀戰中";
+    return;
+  }
   const roleLabel =
     onlineRole === "host" ? "主持" : `席${mySeat + 1}`;
   if (onlineStatus === "waiting") {
@@ -861,6 +870,26 @@ async function tryBootAsPlayer() {
         ? "已入座"
         : "已入座 — 等候滿席與發牌",
     );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function tryBootAsSpectator() {
+  if (shellSurface !== "room") return false;
+  try {
+    const seat = await domain("/api/session/seat");
+    if (!seat || String(seat.role || "") !== "spectator") return false;
+    onlineRole = "spectator";
+    mySeat = 0; // view table from host seat; no private hand / act
+    const ch = await domain("/api/session/channel");
+    if (ch?.name) bindSessionChannel(ch.name);
+    await loadOnlineState().catch(() => {
+      /* stub getState — table follows session-event fanout */
+    });
+    syncOnlineControls();
+    setStatus("觀戰中 — 畫面隨對局更新");
     return true;
   } catch {
     return false;
@@ -1027,8 +1056,10 @@ async function bootShellSurface() {
     applyRoomShell();
     renderAll();
     if (await tryBootAsPlayer()) return;
+    if (await tryBootAsSpectator()) return;
     for (let i = 0; i < 20; i++) {
       if (await tryBootAsRoomHost()) return;
+      if (await tryBootAsSpectator()) return;
       await new Promise((r) => setTimeout(r, 250));
     }
     setStatus("包廂開局中 — 等候通道就緒…");

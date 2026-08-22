@@ -19,6 +19,7 @@ describe("sources smoke", () => {
     const src = readFileSync(new URL("./app.js", import.meta.url), "utf8");
     expect(src).toMatch(/readPgSurface/);
     expect(src).toMatch(/tryBootAsRoomHost/);
+    expect(src).toMatch(/tryBootAsSpectator/);
     expect(src).toMatch(/applyRoomShell/);
   });
 
