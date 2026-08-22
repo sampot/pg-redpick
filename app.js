@@ -257,10 +257,23 @@ function updatePreview() {
 function renderHand() {
   handEl.innerHTML = "";
   if (onlineRole === "spectator") {
-    document.getElementById("count-0").textContent = "—";
+    // Fixed table layout: seat 0 at bottom — still show backs + booth name.
+    const logical = toLogical(0);
+    const names = viewNames();
+    const n = onlineView.handCounts[logical] ?? 0;
+    document.getElementById("count-0").textContent = String(n);
     const vname = document.querySelector('[data-vname="0"]');
-    if (vname) vname.textContent = "觀戰（無手牌）";
-    handEl.setAttribute("aria-label", "觀戰無手牌");
+    if (vname) vname.textContent = names[logical] || `席${logical + 1}`;
+    handEl.setAttribute(
+      "aria-label",
+      `${names[logical] || "席"}手牌（觀戰牌背）`,
+    );
+    const show = Math.min(n, 8);
+    for (let i = 0; i < show; i++) {
+      const back = document.createElement("span");
+      back.className = "card-back";
+      handEl.appendChild(back);
+    }
     return;
   }
   handEl.setAttribute("aria-label", "你的手牌");
@@ -334,8 +347,9 @@ function renderOpponents() {
     ?.classList.toggle(
       "is-turn",
       playing &&
-        onlineRole !== "spectator" &&
-        turn === mySeat,
+        (onlineRole === "spectator"
+          ? turn === toLogical(0)
+          : turn === mySeat),
     );
 }
 
@@ -459,7 +473,9 @@ function renderAll(tone = "") {
     tone ||
     (viewStatusOver()
       ? "win"
-      : viewTurn() === mySeat && viewStatusPlaying()
+      : onlineRole !== "spectator" &&
+          viewTurn() === mySeat &&
+          viewStatusPlaying()
         ? "turn"
         : "");
   if (!isOnline() || onlineView.message) setStatus(msg, autoTone);
@@ -688,7 +704,11 @@ function applyEvent(event) {
       typeof event.seatedCount === "number"
         ? event.seatedCount
         : onlineView.seatedCount;
+    if (Array.isArray(event.names) && event.names.length === 4) {
+      onlineView.names = event.names.map((n) => String(n || ""));
+    }
     syncOnlineControls();
+    renderScores();
     return;
   }
   if (type === "match.dealt" || type === "match.played" || type === "match.over") {
@@ -729,6 +749,9 @@ function applyPublicEventFields(event) {
   if (Array.isArray(event.liveScores)) onlineView.liveScores = event.liveScores;
   if (Array.isArray(event.scores)) onlineView.liveScores = event.scores;
   if (Array.isArray(event.streaks)) onlineView.streaks = event.streaks;
+  if (Array.isArray(event.names) && event.names.length === 4) {
+    onlineView.names = event.names.map((n) => String(n || ""));
+  }
   if (typeof event.message === "string") onlineView.message = event.message;
   if (
     event.winner === 0 ||
@@ -846,10 +869,8 @@ function syncOnlineControls() {
   if (asSpectator) {
     onlineMeta.textContent = room ? "包廂觀戰 · 只見明牌" : "觀戰中 · 只見明牌";
     if (onlineStatus === "active") {
-      setStatus(
-        `觀戰中 — 輪到 ${onlineView.names[viewTurn()] || "—"}`,
-        "turn",
-      );
+      const next = onlineView.names[viewTurn()] || "—";
+      setStatus(`觀戰中 — 輪到 ${next}`, "turn");
     } else if (onlineStatus === "ended") {
       setStatus("觀戰 · 終局", "");
     } else if (onlineStatus === "ready") {
@@ -946,7 +967,7 @@ async function tryBootAsSpectator() {
     if (ch?.name) bindSessionChannel(ch.name);
     await loadOnlineState().catch(() => {});
     syncOnlineControls();
-    setStatus("觀戰中 — 只見桌面明牌與張數");
+    setStatus("觀戰中 — 四席牌背與明牌同步");
     return true;
   } catch {
     return false;

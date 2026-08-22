@@ -25,9 +25,18 @@ describe("sources smoke", () => {
 
   it("boots booth spectators with public-only table view", () => {
     const src = readFileSync(new URL("./app.js", import.meta.url), "utf8");
-    expect(src).toMatch(/觀戰中 — 只見桌面明牌與張數/);
+    expect(src).toMatch(/觀戰中 — 四席牌背與明牌同步/);
     expect(src).toMatch(/onlineRole === "spectator"/);
     expect(src).toMatch(/onlineView\.hand = \[\]/);
+  });
+
+  it("spectators render four seat backs + names and show next turn", () => {
+    const src = readFileSync(new URL("./app.js", import.meta.url), "utf8");
+    expect(src).toMatch(/card-back/);
+    expect(src).toMatch(/觀戰中 — 輪到/);
+    expect(src).toMatch(/event\.names/);
+    // Bottom seat is not wiped to「觀戰（無手牌）」— still a player seat of backs.
+    expect(src).not.toMatch(/觀戰（無手牌）/);
   });
 
   it("awaits PG.ready before boot", () => {

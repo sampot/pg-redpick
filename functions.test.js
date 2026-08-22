@@ -138,6 +138,10 @@ describe("functions.js presence (4 seats)", () => {
     const data = await res.json();
     expect(data.state.status).toBe("ready");
     expect(data.state.names).toEqual(["山姆鍋（Sam)", "G1", "G2", "G3"]);
+    expect(data.events[0]).toMatchObject({
+      type: "match.status",
+      names: ["山姆鍋（Sam)", "G1", "G2", "G3"],
+    });
 
     const deal = await handler.fetch(
       jsonRequest("/api/session/act", {
@@ -148,6 +152,36 @@ describe("functions.js presence (4 seats)", () => {
     );
     const dealt = await deal.json();
     expect(dealt.state.names).toEqual(["山姆鍋（Sam)", "G1", "G2", "G3"]);
+    expect(dealt.events[0]).toMatchObject({
+      type: "match.dealt",
+      turn: 0,
+      names: ["山姆鍋（Sam)", "G1", "G2", "G3"],
+    });
+  });
+
+  it("re-open with same sessionId keeps names and seats (host remount)", async () => {
+    await seedOpen(KV, {
+      status: "ready",
+      seated: { host: true, p2: true, p3: true, p4: true },
+      names: ["甲", "乙", "丙", "丁"],
+    });
+    const res = await handler.fetch(
+      jsonRequest("/api/session/open", {
+        method: "POST",
+        body: {
+          sessionId: "sess-1",
+          channelName: "playgrounds-session:sess-1",
+        },
+      }),
+      { KV },
+    );
+    expect(res.status).toBe(200);
+    const state = await (
+      await handler.fetch(jsonRequest("/api/session/state?role=host"), { KV })
+    ).json();
+    expect(state.status).toBe("ready");
+    expect(state.names).toEqual(["甲", "乙", "丙", "丁"]);
+    expect(state.seatedCount).toBe(4);
   });
 
   it("derives seated roles from seats when seatedRoles is omitted", async () => {
@@ -317,6 +351,39 @@ describe("functions.js deal / play / fog", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toMatch(/輪到/);
+  });
+
+  it("match.played events carry names and next turn for spectators", async () => {
+    await KV.put(
+      REDPICK_STATE_KEY,
+      JSON.stringify({
+        ...JSON.parse(await KV.get(REDPICK_STATE_KEY)),
+        names: ["甲", "乙", "丙", "丁"],
+      }),
+    );
+    await handler.fetch(
+      jsonRequest("/api/session/act", {
+        method: "POST",
+        body: { role: "host", payload: { type: "deal" } },
+      }),
+      { KV },
+    );
+    const stored = JSON.parse(await KV.get(REDPICK_STATE_KEY));
+    const cardId = stored.hands[0][0].id;
+    const res = await handler.fetch(
+      jsonRequest("/api/session/act", {
+        method: "POST",
+        body: { role: "host", payload: { type: "play", cardId } },
+      }),
+      { KV },
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.events[0]).toMatchObject({
+      type: "match.played",
+      turn: 1,
+      names: ["甲", "乙", "丙", "丁"],
+    });
   });
 
   it("accepts host play on turn 0", async () => {

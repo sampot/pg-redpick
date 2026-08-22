@@ -147,6 +147,13 @@ function namesFromSeats(current, seats) {
   return names;
 }
 
+/** @param {RedpickStore} store */
+function publicNames(store) {
+  return Array.isArray(store.names) && store.names.length === 4
+    ? store.names.slice()
+    : [...REDPICK_SEAT_NAMES];
+}
+
 async function loadStore(env) {
   const raw = await env.KV.get(REDPICK_STATE_KEY, "text");
   if (!raw) return emptyStore();
@@ -563,9 +570,22 @@ export default {
 
     if (path.endsWith("/api/session/open") && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) || {};
+      const sessionId = String(body.sessionId || "");
+      const channelName = String(body.channelName || "");
+      const existing = await loadStore(env);
+      // Host remount after booth open must not wipe seats／names.
+      if (existing.sessionId && existing.sessionId === sessionId) {
+        if (channelName) existing.channelName = channelName;
+        await saveStore(env, existing);
+        return json({
+          ok: true,
+          sessionId: existing.sessionId,
+          channelName: existing.channelName,
+        });
+      }
       const store = emptyStore();
-      store.sessionId = String(body.sessionId || "");
-      store.channelName = String(body.channelName || "");
+      store.sessionId = sessionId;
+      store.channelName = channelName;
       store.status = "waiting";
       await saveStore(env, store);
       return json({
@@ -655,6 +675,7 @@ export default {
         status: store.status,
         seatedCount: seatedCount(store.seated),
         seated: { ...store.seated },
+        names: publicNames(store),
         seq: store.seq,
       };
       return json({
@@ -722,6 +743,7 @@ export default {
           table: cloneCards(store.table),
           liveScores: liveScoresFromStore(store),
           streaks: store.streaks.slice(),
+          names: publicNames(store),
           message: store.message,
           seq: store.seq,
         };
@@ -764,6 +786,14 @@ export default {
             {
               type: "match.reset",
               status: store.status,
+              turn: store.turn,
+              handCounts: [0, 0, 0, 0],
+              stockCount: 0,
+              table: [],
+              liveScores: [0, 0, 0, 0],
+              streaks: [0, 0, 0, 0],
+              names: publicNames(store),
+              message: store.message,
               seq: store.seq,
             },
           ],
@@ -810,6 +840,7 @@ export default {
           stockCount: store.stock.length,
           liveScores: liveScoresFromStore(store),
           streaks: store.streaks.slice(),
+          names: publicNames(store),
           message: store.message,
           seq: store.seq,
         };
@@ -824,6 +855,7 @@ export default {
                     winner: store.winner,
                     scores: store.scores.slice(),
                     liveScores: store.scores.slice(),
+                    names: publicNames(store),
                     message: store.message,
                     seq: store.seq,
                   },
