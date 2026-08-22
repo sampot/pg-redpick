@@ -47,3 +47,26 @@ describe("capture bonuses", () => {
     ).toBe(20);
   });
 });
+
+describe("deal to end", () => {
+  it("plays first-card policy until over", () => {
+    const game = new RedpickGame();
+    game.deal();
+    expect(game.status).toBe("playing");
+    let guard = 0;
+    while (game.status === "playing" && guard++ < 200) {
+      const hand = game.hands[game.turn];
+      expect(hand.length).toBeGreaterThan(0);
+      const r = game.play(game.turn, hand[0].id);
+      expect(r.ok).toBe(true);
+    }
+    expect(game.status).toBe("over");
+    expect(game.hands.every((h) => h.length === 0)).toBe(true);
+    expect(
+      game.winner === 0 ||
+        game.winner === 1 ||
+        game.winner === 2 ||
+        game.winner === 3,
+    ).toBe(true);
+  });
+});

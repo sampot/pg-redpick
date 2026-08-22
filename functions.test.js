@@ -409,6 +409,118 @@ describe("functions.js deal / play / fog", () => {
     expect(data.state.turn).toBe(1);
   });
 
+  it("plays deal → end and awards leftover table to last capturer", async () => {
+    await handler.fetch(
+      jsonRequest("/api/session/presence", {
+        method: "POST",
+        body: {
+          seatedRoles: ["host", "p2", "p3", "p4"],
+          seats: [
+            { role: "host", displayName: "甲" },
+            { role: "p2", displayName: "乙" },
+            { role: "p3", displayName: "丙" },
+            { role: "p4", displayName: "丁" },
+          ],
+        },
+      }),
+      { KV },
+    );
+    // Near-end: stock empty; only host has one card that does not match table;
+    // p2 was last capturer — leftover table must go to 乙 on finish.
+    await KV.put(
+      REDPICK_STATE_KEY,
+      JSON.stringify({
+        ...JSON.parse(await KV.get(REDPICK_STATE_KEY)),
+        status: "active",
+        turn: 0,
+        lastCapturer: 1,
+        hands: [
+          [{ id: 900, rank: 2, suit: 1 }],
+          [],
+          [],
+          [],
+        ],
+        piles: [[], [{ id: 1, rank: 0, suit: 0 }], [], []],
+        bonuses: [0, 0, 0, 0],
+        streaks: [0, 0, 0, 0],
+        table: [
+          { id: 901, rank: 5, suit: 0 },
+          { id: 902, rank: 7, suit: 2 },
+        ],
+        stock: [],
+        names: ["甲", "乙", "丙", "丁"],
+      }),
+    );
+    const res = await handler.fetch(
+      jsonRequest("/api/session/act", {
+        method: "POST",
+        body: { role: "host", payload: { type: "play", cardId: 900 } },
+      }),
+      { KV },
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.state.status).toBe("ended");
+    expect(data.events.some((e) => e.type === "match.over")).toBe(true);
+    expect(data.events[0].names).toEqual(["甲", "乙", "丙", "丁"]);
+    const stored = JSON.parse(await KV.get(REDPICK_STATE_KEY));
+    const p2Ids = stored.piles[1].map((c) => c.id);
+    expect(p2Ids).toEqual(expect.arrayContaining([1, 901, 902]));
+  });
+
+  it("plays a full deal-to-end hand across four seats", async () => {
+    const roles = ["host", "p2", "p3", "p4"];
+    await handler.fetch(
+      jsonRequest("/api/session/act", {
+        method: "POST",
+        body: { role: "host", payload: { type: "deal" } },
+      }),
+      { KV },
+    );
+    let over = false;
+    for (let i = 0; i < 200; i++) {
+      const stored = JSON.parse(await KV.get(REDPICK_STATE_KEY));
+      if (stored.status === "ended") {
+        over = true;
+        break;
+      }
+      const turn = stored.turn;
+      const hand = stored.hands[turn];
+      expect(hand?.length).toBeGreaterThan(0);
+      const cardId = hand[0].id;
+      const res = await handler.fetch(
+        jsonRequest("/api/session/act", {
+          method: "POST",
+          body: {
+            role: roles[turn],
+            payload: { type: "play", cardId },
+          },
+        }),
+        { KV },
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.events[0].type).toMatch(/^match\.(played|over)$/);
+      if (data.state.status === "ended") {
+        over = true;
+        expect(data.state.names).toHaveLength(4);
+        expect(
+          data.events.some((e) => e.type === "match.over"),
+        ).toBe(true);
+        break;
+      }
+    }
+    expect(over).toBe(true);
+    const final = await (
+      await handler.fetch(jsonRequest("/api/session/state?role=spectator"), {
+        KV,
+      })
+    ).json();
+    expect(final.status).toBe("ended");
+    expect(final.handCounts).toEqual([0, 0, 0, 0]);
+    expect(final.hand ?? []).toEqual([]);
+  });
+
   it("sync returns fogged hand for the caller role", async () => {
     await handler.fetch(
       jsonRequest("/api/session/act", {

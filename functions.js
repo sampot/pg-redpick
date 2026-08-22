@@ -36,6 +36,7 @@ import {
  *   winner: number | null;
  *   message: string;
  *   lastAct: unknown;
+ *   lastCapturer: number;
  *   names: string[];
  * }} RedpickStore
  */
@@ -63,6 +64,7 @@ function emptyStore() {
     winner: null,
     message: "",
     lastAct: null,
+    lastCapturer: -1,
     names: [...REDPICK_SEAT_NAMES],
   };
 }
@@ -200,6 +202,13 @@ async function loadStore(env) {
           : null,
       message: String(parsed.message || ""),
       lastAct: parsed.lastAct ?? null,
+      lastCapturer:
+        parsed.lastCapturer === 0 ||
+        parsed.lastCapturer === 1 ||
+        parsed.lastCapturer === 2 ||
+        parsed.lastCapturer === 3
+          ? parsed.lastCapturer
+          : -1,
       names: (() => {
         const base = [...REDPICK_SEAT_NAMES];
         if (!Array.isArray(parsed.names)) return base;
@@ -338,6 +347,13 @@ function gameFromStore(store) {
   game.scores = store.scores.slice();
   game.message = store.message;
   game.lastAct = store.lastAct;
+  game.lastCapturer =
+    store.lastCapturer === 0 ||
+    store.lastCapturer === 1 ||
+    store.lastCapturer === 2 ||
+    store.lastCapturer === 3
+      ? store.lastCapturer
+      : -1;
   return game;
 }
 
@@ -351,6 +367,13 @@ function applyGameToStore(store, game) {
   store.stock = cloneCards(game.stock);
   store.turn = game.turn;
   store.message = game.message;
+  store.lastCapturer =
+    game.lastCapturer === 0 ||
+    game.lastCapturer === 1 ||
+    game.lastCapturer === 2 ||
+    game.lastCapturer === 3
+      ? game.lastCapturer
+      : -1;
   store.lastAct = game.lastAct
     ? {
         seat: game.lastAct.seat,
