@@ -178,8 +178,12 @@ function renderScores() {
       `.who-name[data-name-seat="${visual}"]`,
     );
     if (nameEl) {
-      nameEl.textContent =
-        visual === 0 ? "你" : names[logical] || `席${logical + 1}`;
+      if (onlineRole === "spectator") {
+        nameEl.textContent = names[logical] || `席${logical + 1}`;
+      } else {
+        nameEl.textContent =
+          visual === 0 ? "你" : names[logical] || `席${logical + 1}`;
+      }
     }
     const st = document.getElementById(`streak-${visual}`);
     if (st) {
@@ -191,8 +195,13 @@ function renderScores() {
       }
     }
   }
-  scoreYou.textContent = String(scores[mySeat] ?? scores[0] ?? 0);
-  streakLabel.textContent = `×${streaks[mySeat] ?? streaks[0] ?? 0}`;
+  if (onlineRole === "spectator") {
+    scoreYou.textContent = "—";
+    streakLabel.textContent = "—";
+  } else {
+    scoreYou.textContent = String(scores[mySeat] ?? scores[0] ?? 0);
+    streakLabel.textContent = `×${streaks[mySeat] ?? streaks[0] ?? 0}`;
+  }
 }
 
 function myHand() {
@@ -243,6 +252,14 @@ function updatePreview() {
 
 function renderHand() {
   handEl.innerHTML = "";
+  if (onlineRole === "spectator") {
+    document.getElementById("count-0").textContent = "—";
+    const vname = document.querySelector('[data-vname="0"]');
+    if (vname) vname.textContent = "觀戰（無手牌）";
+    handEl.setAttribute("aria-label", "觀戰無手牌");
+    return;
+  }
+  handEl.setAttribute("aria-label", "你的手牌");
   const hand = myHand();
   const myTurn = viewStatusPlaying() && viewTurn() === mySeat && !busy;
   const table = tableCards();
@@ -310,7 +327,12 @@ function renderOpponents() {
   }
   document
     .querySelector(`.seat[data-visual="0"]`)
-    ?.classList.toggle("is-turn", playing && turn === mySeat);
+    ?.classList.toggle(
+      "is-turn",
+      playing &&
+        onlineRole !== "spectator" &&
+        turn === mySeat,
+    );
 }
 
 function renderTable() {
@@ -597,7 +619,12 @@ function applyOnlineState(state) {
     status: state.status || onlineView.status,
     turn: Number(state.turn) || 0,
     table: Array.isArray(state.table) ? state.table : onlineView.table,
-    hand: Array.isArray(state.hand) ? state.hand : onlineView.hand,
+    hand:
+      onlineRole === "spectator"
+        ? []
+        : Array.isArray(state.hand)
+          ? state.hand
+          : onlineView.hand,
     handCounts: Array.isArray(state.handCounts)
       ? state.handCounts
       : onlineView.handCounts,
@@ -662,6 +689,12 @@ function applyEvent(event) {
   }
   if (type === "match.dealt" || type === "match.played" || type === "match.over") {
     applyPublicEventFields(event);
+    if (onlineRole === "spectator") {
+      onlineView.hand = [];
+      selectedId = null;
+      renderAll();
+      return;
+    }
     // Guest needs private hand via sync act (tunnel getState is a stub).
     void loadOnlineState();
     return;
@@ -669,6 +702,11 @@ function applyEvent(event) {
   if (type === "match.reset") {
     applyPublicEventFields(event);
     onlineView.hand = [];
+    selectedId = null;
+    if (onlineRole === "spectator") {
+      renderAll();
+      return;
+    }
     void loadOnlineState();
   }
 }
@@ -718,6 +756,11 @@ function bindSessionChannel(channelName) {
 
 async function loadOnlineState() {
   if (onlineRole === "idle") return null;
+  if (onlineRole === "spectator") {
+    // Watch bridge forbids act; events carry public table／counts only.
+    onlineView.hand = [];
+    return null;
+  }
   try {
     if (onlineRole === "host") {
       const state = await hostDomain(
@@ -797,7 +840,17 @@ function syncOnlineControls() {
   btnOnlineDeal.hidden = !(hosting && onlineStatus === "ready");
   btnOnlineReset.hidden = !(hosting && onlineStatus === "ended");
   if (asSpectator) {
-    onlineMeta.textContent = room ? "包廂觀戰" : "觀戰中";
+    onlineMeta.textContent = room ? "包廂觀戰 · 只見明牌" : "觀戰中 · 只見明牌";
+    if (onlineStatus === "active") {
+      setStatus(
+        `觀戰中 — 輪到 ${onlineView.names[viewTurn()] || "—"}`,
+        "turn",
+      );
+    } else if (onlineStatus === "ended") {
+      setStatus("觀戰 · 終局", "");
+    } else if (onlineStatus === "ready") {
+      setStatus("觀戰中 — 等候發牌", "");
+    }
     return;
   }
   const roleLabel =
@@ -882,14 +935,14 @@ async function tryBootAsSpectator() {
     const seat = await domain("/api/session/seat");
     if (!seat || String(seat.role || "") !== "spectator") return false;
     onlineRole = "spectator";
-    mySeat = 0; // view table from host seat; no private hand / act
+    mySeat = 0; // host at bottom for layout; never own a private hand
+    selectedId = null;
+    onlineView.hand = [];
     const ch = await domain("/api/session/channel");
     if (ch?.name) bindSessionChannel(ch.name);
-    await loadOnlineState().catch(() => {
-      /* stub getState — table follows session-event fanout */
-    });
+    await loadOnlineState().catch(() => {});
     syncOnlineControls();
-    setStatus("觀戰中 — 畫面隨對局更新");
+    setStatus("觀戰中 — 只見桌面明牌與張數");
     return true;
   } catch {
     return false;

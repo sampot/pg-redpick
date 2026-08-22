@@ -23,6 +23,13 @@ describe("sources smoke", () => {
     expect(src).toMatch(/applyRoomShell/);
   });
 
+  it("boots booth spectators with public-only table view", () => {
+    const src = readFileSync(new URL("./app.js", import.meta.url), "utf8");
+    expect(src).toMatch(/觀戰中 — 只見桌面明牌與張數/);
+    expect(src).toMatch(/onlineRole === "spectator"/);
+    expect(src).toMatch(/onlineView\.hand = \[\]/);
+  });
+
   it("awaits PG.ready before boot", () => {
     const src = readFileSync(new URL("./app.js", import.meta.url), "utf8");
     expect(src).toMatch(/pg\.ready/);

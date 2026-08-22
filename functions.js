@@ -225,6 +225,7 @@ function err(code, error, status = 400) {
 
 /**
  * Public + optional private hand for viewerRole.
+ * Spectator／unknown role → table＋counts only（never any seat's hand）.
  * @param {RedpickStore} store
  * @param {string | null | undefined} viewerRole
  */
@@ -270,11 +271,21 @@ function viewForRole(store, viewerRole) {
   base.scores =
     store.status === "ended" ? store.scores.slice() : base.liveScores;
 
-  const seat = viewerRole ? roleToSeat(viewerRole) : -1;
+  const role = typeof viewerRole === "string" ? viewerRole.trim() : "";
+  if (role === "spectator") {
+    return {
+      ...base,
+      role: "spectator",
+      seat: -1,
+      hand: [],
+    };
+  }
+
+  const seat = role ? roleToSeat(role) : -1;
   if (seat >= 0) {
     return {
       ...base,
-      role: viewerRole,
+      role,
       seat,
       hand: cloneCards(store.hands[seat] || []),
     };
@@ -461,12 +472,14 @@ async function handleOnlineHostApi(request, env, path, method) {
  * @param {object} env
  */
 async function resolveViewerRole(request, url, env) {
-  const q = url.searchParams.get("role");
+  const q = String(url.searchParams.get("role") || "").trim();
+  if (q === "spectator") return "spectator";
   if (q && REDPICK_ROLES.includes(q)) return q;
   if (env?.SESSION) {
     try {
       const seat = await env.SESSION.getSeat();
-      const r = String(seat?.role || "");
+      const r = String(seat?.role || "").trim();
+      if (r === "spectator") return "spectator";
       if (REDPICK_ROLES.includes(r)) return r;
     } catch {
       /* ignore */
@@ -661,12 +674,17 @@ export default {
       }
       const body = (await request.json().catch(() => null)) || {};
       const role = String(body.role || "");
-      if (!REDPICK_ROLES.includes(role)) {
+      const isSpectator = role === "spectator";
+      if (!REDPICK_ROLES.includes(role) && !isSpectator) {
         return err("role_forbidden", "role 不允許");
       }
       const payload =
         body.payload && typeof body.payload === "object" ? body.payload : {};
       const type = String(payload.type || body.type || "").trim();
+
+      if (isSpectator && type !== "sync") {
+        return err("role_forbidden", "觀戰只能同步明面狀態");
+      }
 
       if (type === "deal") {
         if (role !== "host") {

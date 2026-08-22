@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "rev": "spectator-boot-1",
+  "rev": "spectator-fog-1",
   "files": [
     "ai.js",
     "app.js",

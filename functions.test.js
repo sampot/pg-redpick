@@ -252,6 +252,51 @@ describe("functions.js deal / play / fog", () => {
     expect(g.stock).toBeUndefined();
   });
 
+  it("spectator state is public-only — no private hands", async () => {
+    await handler.fetch(
+      jsonRequest("/api/session/act", {
+        method: "POST",
+        body: { role: "host", payload: { type: "deal" } },
+      }),
+      { KV },
+    );
+    const res = await handler.fetch(
+      jsonRequest("/api/session/state?role=spectator"),
+      { KV },
+    );
+    expect(res.status).toBe(200);
+    const s = await res.json();
+    expect(s.role).toBe("spectator");
+    expect(s.hand ?? []).toEqual([]);
+    expect(s.hands).toBeUndefined();
+    expect(s.stock).toBeUndefined();
+    expect(s.handCounts).toEqual([5, 5, 5, 5]);
+    expect(s.table).toHaveLength(4);
+    expect(s.stockCount).toBe(52 - 20 - 4);
+  });
+
+  it("spectator sync returns the same public view (no hidden cards)", async () => {
+    await handler.fetch(
+      jsonRequest("/api/session/act", {
+        method: "POST",
+        body: { role: "host", payload: { type: "deal" } },
+      }),
+      { KV },
+    );
+    const res = await handler.fetch(
+      jsonRequest("/api/session/act", {
+        method: "POST",
+        body: { role: "spectator", payload: { type: "sync" } },
+      }),
+      { KV },
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.state.role).toBe("spectator");
+    expect(data.state.hand ?? []).toEqual([]);
+    expect(data.state.hands).toBeUndefined();
+  });
+
   it("rejects play out of turn", async () => {
     await handler.fetch(
       jsonRequest("/api/session/act", {
