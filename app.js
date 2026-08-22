@@ -86,6 +86,11 @@ function isOnline() {
   return onlineRole !== "idle";
 }
 
+function isMyOnlineTurn() {
+  if (onlineRole === "spectator" || onlineRole === "idle") return false;
+  return viewStatusPlaying() && viewTurn() === mySeat && !busy;
+}
+
 function setStatus(msg, tone = "") {
   statusEl.textContent = msg;
   statusEl.dataset.tone = tone;
@@ -219,9 +224,8 @@ function tableCards() {
 
 function updatePreview() {
   const hand = myHand();
-  const myTurn =
-    viewStatusPlaying() && viewTurn() === mySeat && (!isOnline() || true);
-  if (selectedId == null || !myTurn) {
+  const myTurn = isMyOnlineTurn() || (!isOnline() && viewStatusPlaying() && viewTurn() === 0 && !busy);
+  if (selectedId == null || !myTurn || onlineRole === "spectator") {
     previewEl.hidden = true;
     previewEl.textContent = "";
     return;
@@ -261,7 +265,7 @@ function renderHand() {
   }
   handEl.setAttribute("aria-label", "你的手牌");
   const hand = myHand();
-  const myTurn = viewStatusPlaying() && viewTurn() === mySeat && !busy;
+  const myTurn = isMyOnlineTurn();
   const table = tableCards();
 
   for (const card of hand) {
@@ -353,9 +357,9 @@ function renderTable() {
 }
 
 function syncActions() {
-  const myTurn = viewStatusPlaying() && viewTurn() === mySeat && !busy;
+  const myTurn = isMyOnlineTurn();
   btnPlay.disabled = !myTurn || selectedId == null;
-  btnClear.disabled = selectedId == null;
+  btnClear.disabled = selectedId == null || onlineRole === "spectator";
   if (!isOnline()) {
     btnDeal.disabled = busy || game.status === "playing";
   }
